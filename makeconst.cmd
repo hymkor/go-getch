@@ -1,1 +1,1 @@
-go-importconst getch KEY_EVENT
+go-importconst getch KEY_EVENT WINDOW_BUFFER_SIZE_EVENT ENABLE_WINDOW_INPUT
