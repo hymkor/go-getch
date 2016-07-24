@@ -65,6 +65,8 @@ func DisableCtrlC() {
 	go ctrlCHandler(ch)
 }
 
+var OnWindowResize func(w, h uint)
+
 func getKeys() []keyInfo {
 	var numberOfEventsRead uint32
 	var events [10]inputRecordT
@@ -74,7 +76,11 @@ func getKeys() []keyInfo {
 
 	getConsoleMode.Call(uintptr(hConin),
 		uintptr(unsafe.Pointer(&orgConMode)))
-	setConsoleMode.Call(uintptr(hConin), 0)
+	if OnWindowResize != nil {
+		setConsoleMode.Call(uintptr(hConin), ENABLE_WINDOW_INPUT)
+	} else {
+		setConsoleMode.Call(uintptr(hConin), 0)
+	}
 	var precode rune = 0
 	for len(result) <= 0 {
 		readConsoleInput.Call(
@@ -99,6 +105,8 @@ func getKeys() []keyInfo {
 					events[i].wVirtualKeyCode,
 					events[i].dwControlKeyState,
 				})
+			} else if events[i].eventType == WINDOW_BUFFER_SIZE_EVENT && OnWindowResize != nil {
+				OnWindowResize(uint(events[i].bKeyDown&0xFFFF), uint((events[i].bKeyDown>>16)&0xFFFF))
 			}
 		}
 	}
