@@ -47,15 +47,27 @@ func init() {
 	}
 }
 
-type keyInfo struct {
-	KeyCode    rune
-	ScanCode   uint16
-	ShiftState uint32
+type keyEvent struct {
+	Rune  rune
+	Scan  uint16
+	Shift uint32
+}
+
+type resizeEvent struct {
+	Width  uint
+	Height uint
+}
+
+type Event struct {
+	Key    *keyEvent
+	Resize *resizeEvent
 }
 
 func ctrlCHandler(ch chan os.Signal) {
 	for _ = range ch {
-		keyBuffer = append(keyBuffer, keyInfo{3, 0, LEFT_CTRL_PRESSED})
+		eventBuffer = append(eventBuffer, Event{
+			Key: &keyEvent{3, 0, LEFT_CTRL_PRESSED},
+		})
 	}
 }
 
@@ -67,21 +79,16 @@ func DisableCtrlC() {
 
 var OnWindowResize func(w, h uint)
 
-func getKeys() []keyInfo {
+func getEvents(flag uintptr) []Event {
 	var numberOfEventsRead uint32
 	var events [10]inputRecordT
 	var orgConMode uint32
 
-	result := make([]keyInfo, 0, 0)
+	result := make([]Event, 0, 0)
 
 	getConsoleMode.Call(uintptr(hConin),
 		uintptr(unsafe.Pointer(&orgConMode)))
-	if OnWindowResize != nil {
-		setConsoleMode.Call(uintptr(hConin), ENABLE_WINDOW_INPUT)
-	} else {
-		setConsoleMode.Call(uintptr(hConin), 0)
-	}
-	var precode rune = 0
+	setConsoleMode.Call(uintptr(hConin), flag)
 	for len(result) <= 0 {
 		readConsoleInput.Call(
 			uintptr(hConin),
@@ -90,23 +97,22 @@ func getKeys() []keyInfo {
 			uintptr(unsafe.Pointer(&numberOfEventsRead)))
 		for i := uint32(0); i < numberOfEventsRead; i++ {
 			if events[i].eventType == KEY_EVENT && events[i].bKeyDown != 0 {
-				var keycode = rune(events[i].unicodeChar)
-				if keycode != 0 {
-					if precode != 0 {
-						keycode = utf16.DecodeRune(precode, keycode)
-						precode = 0
-					} else if utf16.IsSurrogate(keycode) {
-						precode = keycode
-						continue
-					}
-				}
-				result = append(result, keyInfo{
-					keycode,
-					events[i].wVirtualKeyCode,
-					events[i].dwControlKeyState,
+				result = append(result, Event{
+					Key: &keyEvent{
+						rune(events[i].unicodeChar),
+						events[i].wVirtualKeyCode,
+						events[i].dwControlKeyState,
+					},
 				})
-			} else if events[i].eventType == WINDOW_BUFFER_SIZE_EVENT && OnWindowResize != nil {
-				OnWindowResize(uint(events[i].bKeyDown&0xFFFF), uint((events[i].bKeyDown>>16)&0xFFFF))
+			} else if events[i].eventType == WINDOW_BUFFER_SIZE_EVENT {
+				width := uint(events[i].bKeyDown & 0xFFFF)
+				height := uint((events[i].bKeyDown >> 16) & 0xFFFF)
+				result = append(result, Event{
+					Resize: &resizeEvent{
+						Width:  width,
+						Height: height,
+					},
+				})
 			}
 		}
 	}
@@ -114,33 +120,67 @@ func getKeys() []keyInfo {
 	return result
 }
 
-var keyBuffer []keyInfo
-var keyBufferRead = 0
+var eventBuffer []Event
+var eventBufferRead = 0
 
-func getKey() (rune, uint16, uint32) {
-	for keyBuffer == nil || keyBufferRead >= len(keyBuffer) {
-		keyBuffer = getKeys()
-		keyBufferRead = 0
+func getRawEvent(flag uintptr) Event {
+	for eventBuffer == nil || eventBufferRead >= len(eventBuffer) {
+		eventBuffer = getEvents(flag)
+		eventBufferRead = 0
 	}
-	r := keyBuffer[keyBufferRead]
-	keyBufferRead++
-	return r.KeyCode, r.ScanCode, r.ShiftState
+	eventBufferRead++
+	return eventBuffer[eventBufferRead-1]
 }
 
-func Full() (rune, uint16, uint32) {
-	code, scan, shift := getKey()
-	if code < 0xDC00 || 0xDFFF < code {
-		return code, scan, shift
+var lastkey *keyEvent
+
+// Get a event with concatinating a surrogate-pair of keyevents.
+func getEvent(flag uintptr) Event {
+	for {
+		event1 := getRawEvent(flag)
+		if k := event1.Key; k != nil {
+			if lastkey != nil {
+				k.Rune = utf16.DecodeRune(lastkey.Rune, k.Rune)
+				lastkey = nil
+			} else if utf16.IsSurrogate(k.Rune) {
+				lastkey = k
+				continue
+			}
+		}
+		return event1
 	}
-	code2, _, _ := getKey()
-	return utf16.DecodeRune(code, code2), scan, shift
 }
 
+// Get all console-event (keyboard,resize,...)
+func All() Event {
+	return getEvent(ENABLE_WINDOW_INPUT)
+}
+
+// (deprecated) Get all keyboard-event.
+func Full() (code rune, scan uint16, shift uint32) {
+	var flag uintptr = 0
+	if OnWindowResize != nil {
+		flag = ENABLE_WINDOW_INPUT
+	}
+	for {
+		event := getEvent(flag)
+		if e := event.Resize; e != nil {
+			OnWindowResize(e.Width, e.Height)
+		}
+		if e := event.Key; e != nil {
+			return e.Rune, e.Scan, e.Shift
+		}
+	}
+}
+
+const IGNORE_RESIZE_EVENT uintptr = 0
+
+// Get character as a Rune
 func Rune() rune {
 	for {
-		ch, _, _ := Full()
-		if ch != 0 {
-			return ch
+		e := getEvent(IGNORE_RESIZE_EVENT)
+		if e.Key != nil && e.Key.Rune != 0 {
+			return e.Key.Rune
 		}
 	}
 }
