@@ -65,9 +65,13 @@ type Event struct {
 
 func ctrlCHandler(ch chan os.Signal) {
 	for _ = range ch {
-		eventBuffer = append(eventBuffer, Event{
-			Key: &keyEvent{3, 0, LEFT_CTRL_PRESSED},
-		})
+		event1 := Event{Key: &keyEvent{3, 0, LEFT_CTRL_PRESSED}}
+		if eventBuffer == nil {
+			eventBuffer = []Event{event1}
+			eventBufferRead = 0
+		} else {
+			eventBuffer = append(eventBuffer, event1)
+		}
 	}
 }
 
@@ -84,7 +88,7 @@ func getEvents(flag uintptr) []Event {
 	var events [10]inputRecordT
 	var orgConMode uint32
 
-	result := make([]Event, 0, 0)
+	result := make([]Event, 0, 2)
 
 	getConsoleMode.Call(uintptr(hConin),
 		uintptr(unsafe.Pointer(&orgConMode)))
