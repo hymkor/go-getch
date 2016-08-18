@@ -75,6 +75,17 @@ func ctrlCHandler(ch chan os.Signal) {
 	}
 }
 
+func IsCtrlCPressed() bool {
+	if eventBuffer != nil {
+		for _, p := range eventBuffer[eventBufferRead:] {
+			if p.Key != nil && p.Key.Rune == rune(3) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func DisableCtrlC() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
