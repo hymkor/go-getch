@@ -5,15 +5,18 @@ import (
 	"testing"
 )
 
-func onWindowResize(w, h uint) {
-	fmt.Printf("width=%d height=%d\n", w, h)
-}
+func TestAll(t *testing.T) {
+	for i := 0; i < 3; i++ {
+		fmt.Printf("[%d/3] ", i+1)
+		e := All()
+		if k := e.Key; k != nil {
+			fmt.Printf("key hit: code=%04X scan=%04X shift=%04X\n",
+				k.Rune, k.Scan, k.Shift)
+		}
+		if r := e.Resize; r != nil {
+			fmt.Printf("window resize: width=%d height=%d\n",
+				r.Width, r.Height)
+		}
 
-func TestFull(t *testing.T) {
-	OnWindowResize = onWindowResize
-	code, scan, shift := Full()
-	fmt.Printf("code=%04X scan=%04X shift=%04X\n", code, scan, shift)
-	OnWindowResize = nil
-	code, scan, shift = Full()
-	fmt.Printf("code=%04X scan=%04X shift=%04X\n", code, scan, shift)
+	}
 }
