@@ -10,8 +10,9 @@ Example:
     package main
 
     import (
-        ".."
         "fmt"
+
+        "github.com/zetamatta/go-getch"
     )
 
     const COUNT = 5
