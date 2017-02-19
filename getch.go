@@ -47,8 +47,8 @@ func init() {
 
 type keyEvent struct {
 	Rune  rune
-	Scan  uint
-	Shift uint
+	Scan  uint16
+	Shift uint32
 }
 
 type resizeEvent struct {
@@ -82,8 +82,8 @@ func getEvents(flag uintptr) []Event {
 				result = append(result, Event{
 					Key: &keyEvent{
 						rune(events[i].unicodeChar),
-						uint(events[i].wVirtualKeyCode),
-						uint(events[i].dwControlKeyState),
+						events[i].wVirtualKeyCode,
+						events[i].dwControlKeyState,
 					},
 				})
 			} else if events[i].eventType == WINDOW_BUFFER_SIZE_EVENT {

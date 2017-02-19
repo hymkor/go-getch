@@ -5,7 +5,7 @@ var OnWindowResize func(w, h uint)
 
 // Deprecated: use All()
 // Get all keyboard-event.
-func Full() (code rune, scan uint, shift uint) {
+func Full() (code rune, scan uint16, shift uint32) {
 	var flag uintptr = 0
 	if OnWindowResize != nil {
 		flag = ENABLE_WINDOW_INPUT
