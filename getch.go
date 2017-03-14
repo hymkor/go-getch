@@ -34,6 +34,8 @@ type inputRecordT struct {
 var getConsoleMode = kernel32.NewProc("GetConsoleMode")
 var setConsoleMode = kernel32.NewProc("SetConsoleMode")
 var readConsoleInput = kernel32.NewProc("ReadConsoleInputW")
+var getNumberOfConsoleInputEvents = kernel32.NewProc("GetNumberOfConsoleInputEvents")
+var flushConsoleInputBuffer = kernel32.NewProc("FlushConsoleInputBuffer")
 
 var hConin syscall.Handle
 
@@ -57,45 +59,63 @@ type resizeEvent struct {
 }
 
 type Event struct {
-	Key    *keyEvent
-	Resize *resizeEvent
+	Focus   *struct{}
+	Key     *keyEvent
+	KeyDown *keyEvent
+	KeyUp   *keyEvent
+	Menu    *struct{}
+	Mouse   *struct{}
+	Resize  *resizeEvent
 }
 
-func getEvents(flag uintptr) []Event {
-	var numberOfEventsRead uint32
-	var events [10]inputRecordT
-	var orgConMode uint32
-
+func readEvents(flag uintptr) []Event {
 	result := make([]Event, 0, 2)
 
+	var orgConMode uint32
 	getConsoleMode.Call(uintptr(hConin),
 		uintptr(unsafe.Pointer(&orgConMode)))
 	setConsoleMode.Call(uintptr(hConin), flag)
 	for len(result) <= 0 {
+		var events [10]inputRecordT
+		var numberOfEventsRead uint32
+
 		readConsoleInput.Call(
 			uintptr(hConin),
 			uintptr(unsafe.Pointer(&events[0])),
 			uintptr(len(events)),
 			uintptr(unsafe.Pointer(&numberOfEventsRead)))
 		for i := uint32(0); i < numberOfEventsRead; i++ {
-			if events[i].eventType == KEY_EVENT && events[i].bKeyDown != 0 {
-				result = append(result, Event{
-					Key: &keyEvent{
-						rune(events[i].unicodeChar),
-						events[i].wVirtualKeyCode,
-						events[i].dwControlKeyState,
-					},
-				})
-			} else if events[i].eventType == WINDOW_BUFFER_SIZE_EVENT {
-				width := uint(events[i].bKeyDown & 0xFFFF)
-				height := uint((events[i].bKeyDown >> 16) & 0xFFFF)
-				result = append(result, Event{
+			e := events[i]
+			var r Event
+			switch e.eventType {
+			case FOCUS_EVENT:
+				r = Event{Focus: &struct{}{}}
+			case KEY_EVENT:
+				k := &keyEvent{
+					Rune:  rune(e.unicodeChar),
+					Scan:  e.wVirtualKeyCode,
+					Shift: e.dwControlKeyState,
+				}
+				if e.bKeyDown != 0 {
+					r = Event{Key: k, KeyDown: k}
+				} else {
+					r = Event{KeyUp: k}
+				}
+			case MENU_EVENT:
+				r = Event{Menu: &struct{}{}}
+			case MOUSE_EVENT:
+				r = Event{Mouse: &struct{}{}}
+			case WINDOW_BUFFER_SIZE_EVENT:
+				r = Event{
 					Resize: &resizeEvent{
-						Width:  width,
-						Height: height,
+						Width:  uint(e.bKeyDown & 0xFFFF),
+						Height: uint((e.bKeyDown >> 16) & 0xFFFF),
 					},
-				})
+				}
+			default:
+				continue
 			}
+			result = append(result, r)
 		}
 	}
 	setConsoleMode.Call(uintptr(hConin), uintptr(orgConMode))
@@ -105,9 +125,9 @@ func getEvents(flag uintptr) []Event {
 var eventBuffer []Event
 var eventBufferRead = 0
 
-func getRawEvent(flag uintptr) Event {
+func bufReadEvent(flag uintptr) Event {
 	for eventBuffer == nil || eventBufferRead >= len(eventBuffer) {
-		eventBuffer = getEvents(flag)
+		eventBuffer = readEvents(flag)
 		eventBufferRead = 0
 	}
 	eventBufferRead++
@@ -119,7 +139,7 @@ var lastkey *keyEvent
 // Get a event with concatinating a surrogate-pair of keyevents.
 func getEvent(flag uintptr) Event {
 	for {
-		event1 := getRawEvent(flag)
+		event1 := bufReadEvent(flag)
 		if k := event1.Key; k != nil {
 			if lastkey != nil {
 				k.Rune = utf16.DecodeRune(lastkey.Rune, k.Rune)
@@ -147,5 +167,27 @@ func Rune() rune {
 		if e.Key != nil && e.Key.Rune != 0 {
 			return e.Key.Rune
 		}
+	}
+}
+
+func Count() (int, error) {
+	var count uint32 = 0
+
+	status, _, err := getNumberOfConsoleInputEvents.Call(uintptr(hConin),
+		uintptr(unsafe.Pointer(&count)))
+	if status != 0 {
+		return int(count), nil
+	} else {
+		return 0, err
+	}
+}
+
+func Flush() error {
+	eventBuffer = nil
+	status, _, err := flushConsoleInputBuffer.Call(uintptr(hConin))
+	if status != 0 {
+		return nil
+	} else {
+		return err
 	}
 }
