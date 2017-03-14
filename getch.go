@@ -1,6 +1,7 @@
 package getch
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 	"unicode/utf16"
@@ -36,6 +37,7 @@ var setConsoleMode = kernel32.NewProc("SetConsoleMode")
 var readConsoleInput = kernel32.NewProc("ReadConsoleInputW")
 var getNumberOfConsoleInputEvents = kernel32.NewProc("GetNumberOfConsoleInputEvents")
 var flushConsoleInputBuffer = kernel32.NewProc("FlushConsoleInputBuffer")
+var waitForSingleObject = kernel32.NewProc("WaitForSingleObject")
 
 var hConin syscall.Handle
 
@@ -189,5 +191,24 @@ func Flush() error {
 		return nil
 	} else {
 		return err
+	}
+}
+
+// wait for keyboard event
+func Wait(timeout_msec uintptr) (bool, error) {
+	status, _, err := waitForSingleObject.Call(uintptr(hConin), timeout_msec)
+	switch status {
+	case WAIT_OBJECT_0:
+		return true, nil
+	case WAIT_TIMEOUT:
+		return false, nil
+	case WAIT_ABANDONED:
+		return false, errors.New("WAIT_ABANDONED")
+	default: // including WAIT_FAILED:
+		if err != nil {
+			return false, err
+		} else {
+			return false, errors.New("WAIT_FAILED")
+		}
 	}
 }
