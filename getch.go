@@ -23,14 +23,21 @@ const (
 type inputRecordT struct {
 	eventType uint16
 	_         uint16
-	// _KEY_EVENT_RECORD {
-	bKeyDown         int32
-	wRepeartCount    uint16
-	wVirtualKeyCode  uint16
-	wVirtualScanCode uint16
-	unicodeChar      uint16
-	// }
+	info      [8]uint16
+}
+
+type keyEventRecord struct {
+	bKeyDown          int32
+	wRepeartCount     uint16
+	wVirtualKeyCode   uint16
+	wVirtualScanCode  uint16
+	unicodeChar       uint16
 	dwControlKeyState uint32
+}
+
+type windowBufferSizeRecord struct {
+	X int16
+	Y int16
 }
 
 var getConsoleMode = kernel32.NewProc("GetConsoleMode")
@@ -69,13 +76,34 @@ func (r resizeEvent) String() string {
 	return fmt.Sprintf("Width:%d,Height:%d", r.Width, r.Height)
 }
 
+type mouseEvent struct {
+	X          int16
+	Y          int16
+	Button     uint32
+	ControlKey uint32
+	Event      uint32
+}
+
+const ( // Button
+	FROM_LEFT_1ST_BUTTON_PRESSED = 0x0001
+	FROM_LEFT_2ND_BUTTON_PRESSED = 0x0004
+	FROM_LEFT_3RD_BUTTON_PRESSED = 0x0008
+	FROM_LEFT_4TH_BUTTON_PRESSED = 0x0010
+	RIGHTMOST_BUTTON_PRESSED     = 0x0002
+)
+
+func (m mouseEvent) String() string {
+	return fmt.Sprintf("X:%,Y:%d,Button:%d,ControlKey:%d,Event:%d",
+		m.X, m.Y, m.Button, m.ControlKey, m.Event)
+}
+
 type Event struct {
-	Focus   *struct{}
+	Focus   *struct{} // MS says it should be ignored
 	Key     *keyEvent // == KeyDown
 	KeyDown *keyEvent
 	KeyUp   *keyEvent
-	Menu    *struct{}
-	Mouse   *struct{}
+	Menu    *struct{}   // MS says it should be ignored
+	Mouse   *mouseEvent // not supported,yet
 	Resize  *resizeEvent
 }
 
@@ -106,13 +134,23 @@ func (e Event) String() string {
 	}
 }
 
-func readEvents(flag uintptr) []Event {
+func GetConsoleMode() uint32 {
+	var mode uint32
+	getConsoleMode.Call(uintptr(hConin), uintptr(unsafe.Pointer(&mode)))
+	return mode
+}
+
+func SetConsoleMode(flag uint32) {
+	setConsoleMode.Call(uintptr(hConin), uintptr(flag))
+}
+
+func readEvents(flag uint32) []Event {
+	orgConMode := GetConsoleMode()
+	SetConsoleMode(orgConMode)
+	defer SetConsoleMode(orgConMode)
+
 	result := make([]Event, 0, 2)
 
-	var orgConMode uint32
-	getConsoleMode.Call(uintptr(hConin),
-		uintptr(unsafe.Pointer(&orgConMode)))
-	setConsoleMode.Call(uintptr(hConin), flag)
 	for len(result) <= 0 {
 		var events [10]inputRecordT
 		var numberOfEventsRead uint32
@@ -129,12 +167,13 @@ func readEvents(flag uintptr) []Event {
 			case FOCUS_EVENT:
 				r = Event{Focus: &struct{}{}}
 			case KEY_EVENT:
+				p := (*keyEventRecord)(unsafe.Pointer(&e.info[0]))
 				k := &keyEvent{
-					Rune:  rune(e.unicodeChar),
-					Scan:  e.wVirtualKeyCode,
-					Shift: e.dwControlKeyState,
+					Rune:  rune(p.unicodeChar),
+					Scan:  p.wVirtualKeyCode,
+					Shift: p.dwControlKeyState,
 				}
-				if e.bKeyDown != 0 {
+				if p.bKeyDown != 0 {
 					r = Event{Key: k, KeyDown: k}
 				} else {
 					r = Event{KeyUp: k}
@@ -142,12 +181,22 @@ func readEvents(flag uintptr) []Event {
 			case MENU_EVENT:
 				r = Event{Menu: &struct{}{}}
 			case MOUSE_EVENT:
-				r = Event{Mouse: &struct{}{}}
+				p := (*mouseEvent)(unsafe.Pointer(&e.info[0]))
+				r = Event{
+					Mouse: &mouseEvent{
+						X:          p.X,
+						Y:          p.Y,
+						Button:     p.Button,
+						ControlKey: p.ControlKey,
+						Event:      p.Event,
+					},
+				}
 			case WINDOW_BUFFER_SIZE_EVENT:
+				p := (*windowBufferSizeRecord)(unsafe.Pointer(&e.info[0]))
 				r = Event{
 					Resize: &resizeEvent{
-						Width:  uint(e.bKeyDown & 0xFFFF),
-						Height: uint((e.bKeyDown >> 16) & 0xFFFF),
+						Width:  uint(p.X),
+						Height: uint(p.Y),
 					},
 				}
 			default:
@@ -156,14 +205,13 @@ func readEvents(flag uintptr) []Event {
 			result = append(result, r)
 		}
 	}
-	setConsoleMode.Call(uintptr(hConin), uintptr(orgConMode))
 	return result
 }
 
 var eventBuffer []Event
 var eventBufferRead = 0
 
-func bufReadEvent(flag uintptr) Event {
+func bufReadEvent(flag uint32) Event {
 	for eventBuffer == nil || eventBufferRead >= len(eventBuffer) {
 		eventBuffer = readEvents(flag)
 		eventBufferRead = 0
@@ -175,7 +223,7 @@ func bufReadEvent(flag uintptr) Event {
 var lastkey *keyEvent
 
 // Get a event with concatinating a surrogate-pair of keyevents.
-func getEvent(flag uintptr) Event {
+func getEvent(flag uint32) Event {
 	for {
 		event1 := bufReadEvent(flag)
 		if k := event1.Key; k != nil {
@@ -191,12 +239,14 @@ func getEvent(flag uintptr) Event {
 	}
 }
 
+const ALL_EVENTS = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT
+
 // Get all console-event (keyboard,resize,...)
 func All() Event {
-	return getEvent(ENABLE_WINDOW_INPUT)
+	return getEvent(ALL_EVENTS)
 }
 
-const IGNORE_RESIZE_EVENT uintptr = 0
+const IGNORE_RESIZE_EVENT uint32 = 0
 
 // Get character as a Rune
 func Rune() rune {
@@ -221,6 +271,10 @@ func Count() (int, error) {
 }
 
 func Flush() error {
+	org := GetConsoleMode()
+	SetConsoleMode(ALL_EVENTS)
+	defer SetConsoleMode(org)
+
 	eventBuffer = nil
 	status, _, err := flushConsoleInputBuffer.Call(uintptr(hConin))
 	if status != 0 {
@@ -250,6 +304,10 @@ func Wait(timeout_msec uintptr) (bool, error) {
 }
 
 func Within(msec uintptr) (Event, error) {
+	orgConMode := GetConsoleMode()
+	SetConsoleMode(ALL_EVENTS)
+	defer SetConsoleMode(orgConMode)
+
 	if ok, err := Wait(msec); err != nil || !ok {
 		return Event{}, err
 	}
@@ -259,10 +317,14 @@ func Within(msec uintptr) (Event, error) {
 const NUL = '\000'
 
 func RuneWithin(msec uintptr) (rune, error) {
+	orgConMode := GetConsoleMode()
+	SetConsoleMode(IGNORE_RESIZE_EVENT)
+	defer SetConsoleMode(orgConMode)
+
 	if ok, err := Wait(msec); err != nil || !ok {
 		return NUL, err
 	}
-	e := getEvent(ENABLE_WINDOW_INPUT)
+	e := getEvent(IGNORE_RESIZE_EVENT)
 	if e.Key != nil {
 		return e.Key.Rune, nil
 	}
