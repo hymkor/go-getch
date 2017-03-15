@@ -146,7 +146,7 @@ func SetConsoleMode(flag uint32) {
 
 func readEvents(flag uint32) []Event {
 	orgConMode := GetConsoleMode()
-	SetConsoleMode(orgConMode)
+	SetConsoleMode(flag)
 	defer SetConsoleMode(orgConMode)
 
 	result := make([]Event, 0, 2)
