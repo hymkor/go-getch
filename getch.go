@@ -71,7 +71,7 @@ func (r resizeEvent) String() string {
 
 type Event struct {
 	Focus   *struct{}
-	Key     *keyEvent
+	Key     *keyEvent // == KeyDown
 	KeyDown *keyEvent
 	KeyUp   *keyEvent
 	Menu    *struct{}
