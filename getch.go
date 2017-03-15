@@ -3,6 +3,7 @@ package getch
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -55,9 +56,17 @@ type keyEvent struct {
 	Shift uint32
 }
 
+func (k keyEvent) String() string {
+	return fmt.Sprintf("Rune:%v,Scan=%d,Shift=%d", k.Rune, k.Scan, k.Shift)
+}
+
 type resizeEvent struct {
 	Width  uint
 	Height uint
+}
+
+func (r resizeEvent) String() string {
+	return fmt.Sprintf("Width:%d,Height:%d", r.Width, r.Height)
 }
 
 type Event struct {
@@ -68,6 +77,33 @@ type Event struct {
 	Menu    *struct{}
 	Mouse   *struct{}
 	Resize  *resizeEvent
+}
+
+func (e Event) String() string {
+	event := make([]string, 0, 7)
+	if e.Focus != nil {
+		event = append(event, "Focus")
+	}
+	if e.KeyDown != nil {
+		event = append(event, "KeyDown("+e.KeyDown.String()+")")
+	}
+	if e.KeyUp != nil {
+		event = append(event, "KeyUp("+e.KeyUp.String()+")")
+	}
+	if e.Menu != nil {
+		event = append(event, "Menu")
+	}
+	if e.Mouse != nil {
+		event = append(event, "Mouse")
+	}
+	if e.Resize != nil {
+		event = append(event, "Resize("+e.Resize.String()+")")
+	}
+	if len(event) > 0 {
+		return strings.Join(event, ",")
+	} else {
+		return "no events"
+	}
 }
 
 func readEvents(flag uintptr) []Event {
@@ -211,4 +247,24 @@ func Wait(timeout_msec uintptr) (bool, error) {
 			return false, errors.New("WAIT_FAILED")
 		}
 	}
+}
+
+func Within(msec uintptr) (Event, error) {
+	if ok, err := Wait(msec); err != nil || !ok {
+		return Event{}, err
+	}
+	return All(), nil
+}
+
+const NUL = '\000'
+
+func RuneWithin(msec uintptr) (rune, error) {
+	if ok, err := Wait(msec); err != nil || !ok {
+		return NUL, err
+	}
+	e := getEvent(ENABLE_WINDOW_INPUT)
+	if e.Key != nil {
+		return e.Key.Rune, nil
+	}
+	return NUL, nil
 }
