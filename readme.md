@@ -5,7 +5,8 @@ go-getch
 (keyboard-hits or screen-resize),
 for the programming language Go for Windows,
 
-Example:
+Example
+-------
 
     package main
 
@@ -34,3 +35,46 @@ Example:
 
 - `go-getch` supports the surrogate pair of Unicode.
 - `go-getch` is used in Windows CUI Shell [NYAGOS](https://github.com/zetamatta/nyagos)
+
+Types
+-----
+
+	type Event struct {
+		Focus   *struct{}
+		Key     *keyEvent // == KeyDown
+		KeyDown *keyEvent
+		KeyUp   *keyEvent
+		Menu    *struct{}
+		Mouse   *struct{}
+		Resize  *resizeEvent
+	}
+
+	type keyEvent struct {
+		Rune  rune
+		Scan  uint16
+		Shift uint32
+	}
+
+	type resizeEvent struct {
+		Width  uint
+		Height uint
+	}
+
+Functions
+---------
+
+### func All() Event
+
+Get all keyboard events.
+
+### func Rune() rune
+
+Get a KeyDown event.
+
+### func Within(msec uintptr) (Event, error)
+
+Get all keyboard events with time-out.
+
+### func RuneWithin(msec uintptr) (rune, error)
+
+Get a KeyDown event with time-out.
