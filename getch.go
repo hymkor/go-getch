@@ -18,17 +18,6 @@ const (
 	ALT_PRESSED        = RIGHT_ALT_PRESSED | LEFT_ALT_PRESSED
 )
 
-
-var hConin consoleinput.Handle
-
-func init() {
-	var err error
-	hConin, err = consoleinput.New()
-	if err != nil {
-		panic(fmt.Sprintf("conio: %v", err))
-	}
-}
-
 type keyEvent struct {
 	Rune  rune
 	Scan  uint16
@@ -93,16 +82,31 @@ func (e Event) String() string {
 	}
 }
 
-func readEvents(flag uint32) []Event {
-	orgConMode := hConin.GetConsoleMode()
-	hConin.SetConsoleMode(flag)
-	defer hConin.SetConsoleMode(orgConMode)
+type Handle struct {
+	consoleinput.Handle
+	lastkey         *keyEvent
+	eventBuffer     []Event
+	eventBufferRead int
+}
+
+func New() (*Handle, error) {
+	handle, err := consoleinput.New()
+	if err != nil {
+		return nil, err
+	}
+	return &Handle{Handle: handle}, nil
+}
+
+func (h *Handle) readEvents(flag uint32) []Event {
+	orgConMode := h.GetConsoleMode()
+	h.SetConsoleMode(flag)
+	defer h.SetConsoleMode(orgConMode)
 
 	result := make([]Event, 0, 2)
 
 	for len(result) <= 0 {
 		var events [10]consoleinput.InputRecord
-		numberOfEventsRead := hConin.Read(events[:])
+		numberOfEventsRead := h.Read(events[:])
 
 		for i := uint32(0); i < numberOfEventsRead; i++ {
 			e := events[i]
@@ -136,7 +140,7 @@ func readEvents(flag uint32) []Event {
 					},
 				}
 			case consoleinput.WINDOW_BUFFER_SIZE_EVENT:
-				width,height := e.ResizeEvent()
+				width, height := e.ResizeEvent()
 				r = Event{
 					Resize: &resizeEvent{
 						Width:  uint(width),
@@ -152,30 +156,25 @@ func readEvents(flag uint32) []Event {
 	return result
 }
 
-var eventBuffer []Event
-var eventBufferRead = 0
-
-func bufReadEvent(flag uint32) Event {
-	for eventBuffer == nil || eventBufferRead >= len(eventBuffer) {
-		eventBuffer = readEvents(flag)
-		eventBufferRead = 0
+func (h *Handle) bufReadEvent(flag uint32) Event {
+	for h.eventBuffer == nil || h.eventBufferRead >= len(h.eventBuffer) {
+		h.eventBuffer = h.readEvents(flag)
+		h.eventBufferRead = 0
 	}
-	eventBufferRead++
-	return eventBuffer[eventBufferRead-1]
+	h.eventBufferRead++
+	return h.eventBuffer[h.eventBufferRead-1]
 }
 
-var lastkey *keyEvent
-
 // Get a event with concatinating a surrogate-pair of keyevents.
-func getEvent(flag uint32) Event {
+func (h *Handle) getEvent(flag uint32) Event {
 	for {
-		event1 := bufReadEvent(flag)
+		event1 := h.bufReadEvent(flag)
 		if k := event1.Key; k != nil {
-			if lastkey != nil {
-				k.Rune = utf16.DecodeRune(lastkey.Rune, k.Rune)
-				lastkey = nil
+			if h.lastkey != nil {
+				k.Rune = utf16.DecodeRune(h.lastkey.Rune, k.Rune)
+				h.lastkey = nil
 			} else if utf16.IsSurrogate(k.Rune) {
-				lastkey = k
+				h.lastkey = k
 				continue
 			}
 		}
@@ -186,38 +185,34 @@ func getEvent(flag uint32) Event {
 const ALL_EVENTS = consoleinput.ENABLE_WINDOW_INPUT | consoleinput.ENABLE_MOUSE_INPUT
 
 // Get all console-event (keyboard,resize,...)
-func All() Event {
-	return getEvent(ALL_EVENTS)
+func (h *Handle) All() Event {
+	return h.getEvent(ALL_EVENTS)
 }
 
 const IGNORE_RESIZE_EVENT uint32 = 0
 
 // Get character as a Rune
-func Rune() rune {
+func (h *Handle) Rune() rune {
 	for {
-		e := getEvent(IGNORE_RESIZE_EVENT)
+		e := h.getEvent(IGNORE_RESIZE_EVENT)
 		if e.Key != nil && e.Key.Rune != 0 {
 			return e.Key.Rune
 		}
 	}
 }
 
-func Count() (int, error) {
-	return hConin.GetNumberOfEvent()
-}
+func (h *Handle) Flush() error {
+	org := h.GetConsoleMode()
+	h.SetConsoleMode(ALL_EVENTS)
+	defer h.SetConsoleMode(org)
 
-func Flush() error {
-	org := hConin.GetConsoleMode()
-	hConin.SetConsoleMode(ALL_EVENTS)
-	defer hConin.SetConsoleMode(org)
-
-	eventBuffer = nil
-	return hConin.FlushConsoleInputBuffer()
+	h.eventBuffer = nil
+	return h.FlushConsoleInputBuffer()
 }
 
 // wait for keyboard event
-func Wait(timeout_msec uintptr) (bool, error) {
-	status, err := hConin.WaitForSingleObject(timeout_msec)
+func (h *Handle) Wait(timeout_msec uintptr) (bool, error) {
+	status, err := h.WaitForSingleObject(timeout_msec)
 	switch status {
 	case consoleinput.WAIT_OBJECT_0:
 		return true, nil
@@ -234,28 +229,28 @@ func Wait(timeout_msec uintptr) (bool, error) {
 	}
 }
 
-func Within(msec uintptr) (Event, error) {
-	orgConMode := hConin.GetConsoleMode()
-	hConin.SetConsoleMode(ALL_EVENTS)
-	defer hConin.SetConsoleMode(orgConMode)
+func (h *Handle) Within(msec uintptr) (Event, error) {
+	orgConMode := h.GetConsoleMode()
+	h.SetConsoleMode(ALL_EVENTS)
+	defer h.SetConsoleMode(orgConMode)
 
-	if ok, err := Wait(msec); err != nil || !ok {
+	if ok, err := h.Wait(msec); err != nil || !ok {
 		return Event{}, err
 	}
-	return All(), nil
+	return h.All(), nil
 }
 
 const NUL = '\000'
 
-func RuneWithin(msec uintptr) (rune, error) {
-	orgConMode := hConin.GetConsoleMode()
-	hConin.SetConsoleMode(IGNORE_RESIZE_EVENT)
-	defer hConin.SetConsoleMode(orgConMode)
+func (h *Handle) RuneWithin(msec uintptr) (rune, error) {
+	orgConMode := h.GetConsoleMode()
+	h.SetConsoleMode(IGNORE_RESIZE_EVENT)
+	defer h.SetConsoleMode(orgConMode)
 
-	if ok, err := Wait(msec); err != nil || !ok {
+	if ok, err := h.Wait(msec); err != nil || !ok {
 		return NUL, err
 	}
-	e := getEvent(IGNORE_RESIZE_EVENT)
+	e := h.getEvent(IGNORE_RESIZE_EVENT)
 	if e.Key != nil {
 		return e.Key.Rune, nil
 	}

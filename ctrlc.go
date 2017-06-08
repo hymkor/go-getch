@@ -5,21 +5,21 @@ import (
 	"os/signal"
 )
 
-func ctrlCHandler(ch chan os.Signal) {
+func (h *Handle) ctrlCHandler(ch chan os.Signal) {
 	for _ = range ch {
 		event1 := Event{Key: &keyEvent{3, 0, LEFT_CTRL_PRESSED}}
-		if eventBuffer == nil {
-			eventBuffer = []Event{event1}
-			eventBufferRead = 0
+		if h.eventBuffer == nil {
+			h.eventBuffer = []Event{event1}
+			h.eventBufferRead = 0
 		} else {
-			eventBuffer = append(eventBuffer, event1)
+			h.eventBuffer = append(h.eventBuffer, event1)
 		}
 	}
 }
 
-func IsCtrlCPressed() bool {
-	if eventBuffer != nil {
-		for _, p := range eventBuffer[eventBufferRead:] {
+func (h *Handle) IsCtrlCPressed() bool {
+	if h.eventBuffer != nil {
+		for _, p := range h.eventBuffer[h.eventBufferRead:] {
 			if p.Key != nil && p.Key.Rune == rune(3) {
 				return true
 			}
@@ -28,8 +28,8 @@ func IsCtrlCPressed() bool {
 	return false
 }
 
-func DisableCtrlC() {
+func (h *Handle) DisableCtrlC() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
-	go ctrlCHandler(ch)
+	go h.ctrlCHandler(ch)
 }
