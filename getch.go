@@ -1,4 +1,4 @@
-package consoleevent
+package getch
 
 import (
 	"errors"
@@ -170,7 +170,7 @@ func (h *Handle) bufReadEvent(flag uint32) Event {
 }
 
 // Get a event with concatinating a surrogate-pair of keyevents.
-func (h *Handle) GetEvent_(flag uint32) Event {
+func (h *Handle) getEvent(flag uint32) Event {
 	for {
 		event1 := h.bufReadEvent(flag)
 		if k := event1.Key; k != nil {
@@ -190,7 +190,7 @@ const ALL_EVENTS = consoleinput.ENABLE_WINDOW_INPUT | consoleinput.ENABLE_MOUSE_
 
 // Get all console-event (keyboard,resize,...)
 func (h *Handle) All() Event {
-	return h.GetEvent_(ALL_EVENTS)
+	return h.getEvent(ALL_EVENTS)
 }
 
 const IGNORE_RESIZE_EVENT uint32 = 0
@@ -198,7 +198,7 @@ const IGNORE_RESIZE_EVENT uint32 = 0
 // Get character as a Rune
 func (h *Handle) Rune() rune {
 	for {
-		e := h.GetEvent_(IGNORE_RESIZE_EVENT)
+		e := h.getEvent(IGNORE_RESIZE_EVENT)
 		if e.Key != nil && e.Key.Rune != 0 {
 			return e.Key.Rune
 		}
@@ -254,7 +254,7 @@ func (h *Handle) RuneWithin(msec uintptr) (rune, error) {
 	if ok, err := h.Wait(msec); err != nil || !ok {
 		return NUL, err
 	}
-	e := h.GetEvent_(IGNORE_RESIZE_EVENT)
+	e := h.getEvent(IGNORE_RESIZE_EVENT)
 	if e.Key != nil {
 		return e.Key.Rune, nil
 	}

@@ -1,4 +1,4 @@
-package consoleevent
+package getch
 
 import (
 	"os"
