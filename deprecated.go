@@ -15,7 +15,7 @@ func Full() (code rune, scan uint16, shift uint32) {
 		flag = consoleinput.ENABLE_WINDOW_INPUT
 	}
 	for {
-		event := hconin.getEvent(flag)
+		event := hconin.GetEvent_(flag)
 		if e := event.Resize; e != nil {
 			OnWindowResize(e.Width, e.Height)
 		}

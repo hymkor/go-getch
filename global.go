@@ -1,17 +1,21 @@
 package getch
 
-var hconin *Handle
+import (
+	"github.com/zetamatta/go-getch/consoleevent"
+)
+
+var hconin *consoleevent.Handle
 
 func init() {
 	var err error
-	hconin, err = New()
+	hconin, err = consoleevent.New()
 	if err != nil {
 		panic(err.Error())
 	}
 }
 
 // Get all console-event (keyboard,resize,...)
-func All() Event {
+func All() consoleevent.Event {
 	return hconin.All()
 }
 
@@ -33,7 +37,7 @@ func Wait(timeout_msec uintptr) (bool, error) {
 	return hconin.Wait(timeout_msec)
 }
 
-func Within(msec uintptr) (Event, error) {
+func Within(msec uintptr) (consoleevent.Event, error) {
 	return hconin.Within(msec)
 }
 
