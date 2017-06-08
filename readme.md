@@ -1,3 +1,5 @@
+[![GoDoc](https://godoc.org/github.com/zetamatta/go-getch?status.svg)](https://godoc.org/github.com/zetamatta/go-getch)
+
 go-getch
 =========
 
