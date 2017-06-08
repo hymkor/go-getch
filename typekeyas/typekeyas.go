@@ -1,12 +1,10 @@
-package main
+package typekeyas
 
 import (
-	"os"
-
 	"github.com/zetamatta/go-getch/consoleinput"
 )
 
-func writeRune(handle consoleinput.Handle,c rune) uint32 {
+func Rune(handle consoleinput.Handle, c rune) uint32 {
 	records := []consoleinput.InputRecord{
 		consoleinput.InputRecord{EventType: consoleinput.KEY_EVENT},
 		consoleinput.InputRecord{EventType: consoleinput.KEY_EVENT},
@@ -21,20 +19,8 @@ func writeRune(handle consoleinput.Handle,c rune) uint32 {
 	return handle.Write(records[:])
 }
 
-func  writeString(handle consoleinput.Handle,s string) {
+func String(handle consoleinput.Handle, s string) {
 	for _, c := range s {
-		writeRune(handle,c)
-	}
-}
-
-func main() {
-	console, err := consoleinput.New()
-	if err != nil {
-		println(err.Error())
-		return
-	}
-	for _, s := range os.Args[1:] {
-		writeString(console,s)
-		writeRune(console,'\r')
+		Rune(handle, c)
 	}
 }
