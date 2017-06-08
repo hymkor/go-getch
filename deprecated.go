@@ -1,5 +1,9 @@
 package getch
 
+import (
+	"github.com/zetamatta/go-getch/consoleinput"
+)
+
 // Deprecated: use All()
 var OnWindowResize func(w, h uint)
 
@@ -8,7 +12,7 @@ var OnWindowResize func(w, h uint)
 func Full() (code rune, scan uint16, shift uint32) {
 	var flag uint32 = 0
 	if OnWindowResize != nil {
-		flag = ENABLE_WINDOW_INPUT
+		flag = consoleinput.ENABLE_WINDOW_INPUT
 	}
 	for {
 		event := getEvent(flag)

@@ -108,9 +108,9 @@ func readEvents(flag uint32) []Event {
 			e := events[i]
 			var r Event
 			switch e.EventType {
-			case FOCUS_EVENT:
+			case consoleinput.FOCUS_EVENT:
 				r = Event{Focus: &struct{}{}}
-			case KEY_EVENT:
+			case consoleinput.KEY_EVENT:
 				p := e.KeyEvent()
 				k := &keyEvent{
 					Rune:  rune(p.UnicodeChar),
@@ -122,9 +122,9 @@ func readEvents(flag uint32) []Event {
 				} else {
 					r = Event{KeyUp: k}
 				}
-			case MENU_EVENT:
+			case consoleinput.MENU_EVENT:
 				r = Event{Menu: &struct{}{}}
-			case MOUSE_EVENT:
+			case consoleinput.MOUSE_EVENT:
 				p := e.MouseEvent()
 				r = Event{
 					Mouse: &consoleinput.MouseEventRecord{
@@ -135,7 +135,7 @@ func readEvents(flag uint32) []Event {
 						Event:      p.Event,
 					},
 				}
-			case WINDOW_BUFFER_SIZE_EVENT:
+			case consoleinput.WINDOW_BUFFER_SIZE_EVENT:
 				width,height := e.ResizeEvent()
 				r = Event{
 					Resize: &resizeEvent{
@@ -183,7 +183,7 @@ func getEvent(flag uint32) Event {
 	}
 }
 
-const ALL_EVENTS = ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT
+const ALL_EVENTS = consoleinput.ENABLE_WINDOW_INPUT | consoleinput.ENABLE_MOUSE_INPUT
 
 // Get all console-event (keyboard,resize,...)
 func All() Event {
@@ -219,11 +219,11 @@ func Flush() error {
 func Wait(timeout_msec uintptr) (bool, error) {
 	status, err := hConin.WaitForSingleObject(timeout_msec)
 	switch status {
-	case WAIT_OBJECT_0:
+	case consoleinput.WAIT_OBJECT_0:
 		return true, nil
-	case WAIT_TIMEOUT:
+	case consoleinput.WAIT_TIMEOUT:
 		return false, nil
-	case WAIT_ABANDONED:
+	case consoleinput.WAIT_ABANDONED:
 		return false, errors.New("WAIT_ABANDONED")
 	default: // including WAIT_FAILED:
 		if err != nil {

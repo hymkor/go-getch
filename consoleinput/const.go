@@ -1,4 +1,4 @@
-package getch
+package consoleinput
 
 const FOCUS_EVENT = 16
 const KEY_EVENT = 1

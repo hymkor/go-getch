@@ -58,7 +58,7 @@ type windowBufferSizeRecord struct {
 	Y int16
 }
 
-func (e *InputRecord) ResizeEvent()(int16,int16){
+func (e *InputRecord) ResizeEvent() (int16, int16) {
 	p := (*windowBufferSizeRecord)(unsafe.Pointer(&e.Info[0]))
-	return p.X,p.Y
+	return p.X, p.Y
 }
