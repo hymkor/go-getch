@@ -4,12 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"syscall"
 	"unicode/utf16"
 	"unsafe"
-)
 
-var kernel32 = syscall.NewLazyDLL("kernel32")
+	"github.com/zetamatta/go-getch/consoleinput"
+)
 
 const (
 	RIGHT_ALT_PRESSED  = 1
@@ -19,12 +18,6 @@ const (
 	CTRL_PRESSED       = RIGHT_CTRL_PRESSED | LEFT_CTRL_PRESSED
 	ALT_PRESSED        = RIGHT_ALT_PRESSED | LEFT_ALT_PRESSED
 )
-
-type inputRecordT struct {
-	eventType uint16
-	_         uint16
-	info      [8]uint16
-}
 
 type keyEventRecord struct {
 	bKeyDown          int32
@@ -40,18 +33,11 @@ type windowBufferSizeRecord struct {
 	Y int16
 }
 
-var getConsoleMode = kernel32.NewProc("GetConsoleMode")
-var setConsoleMode = kernel32.NewProc("SetConsoleMode")
-var readConsoleInput = kernel32.NewProc("ReadConsoleInputW")
-var getNumberOfConsoleInputEvents = kernel32.NewProc("GetNumberOfConsoleInputEvents")
-var flushConsoleInputBuffer = kernel32.NewProc("FlushConsoleInputBuffer")
-var waitForSingleObject = kernel32.NewProc("WaitForSingleObject")
-
-var hConin syscall.Handle
+var hConin consoleinput.Handle
 
 func init() {
 	var err error
-	hConin, err = syscall.Open("CONIN$", syscall.O_RDWR, 0)
+	hConin, err = consoleinput.New()
 	if err != nil {
 		panic(fmt.Sprintf("conio: %v", err))
 	}
@@ -134,40 +120,25 @@ func (e Event) String() string {
 	}
 }
 
-func GetConsoleMode() uint32 {
-	var mode uint32
-	getConsoleMode.Call(uintptr(hConin), uintptr(unsafe.Pointer(&mode)))
-	return mode
-}
-
-func SetConsoleMode(flag uint32) {
-	setConsoleMode.Call(uintptr(hConin), uintptr(flag))
-}
-
 func readEvents(flag uint32) []Event {
-	orgConMode := GetConsoleMode()
-	SetConsoleMode(flag)
-	defer SetConsoleMode(orgConMode)
+	orgConMode := hConin.GetConsoleMode()
+	hConin.SetConsoleMode(flag)
+	defer hConin.SetConsoleMode(orgConMode)
 
 	result := make([]Event, 0, 2)
 
 	for len(result) <= 0 {
-		var events [10]inputRecordT
-		var numberOfEventsRead uint32
+		var events [10]consoleinput.InputRecord
+		numberOfEventsRead := hConin.Read(events[:])
 
-		readConsoleInput.Call(
-			uintptr(hConin),
-			uintptr(unsafe.Pointer(&events[0])),
-			uintptr(len(events)),
-			uintptr(unsafe.Pointer(&numberOfEventsRead)))
 		for i := uint32(0); i < numberOfEventsRead; i++ {
 			e := events[i]
 			var r Event
-			switch e.eventType {
+			switch e.EventType {
 			case FOCUS_EVENT:
 				r = Event{Focus: &struct{}{}}
 			case KEY_EVENT:
-				p := (*keyEventRecord)(unsafe.Pointer(&e.info[0]))
+				p := (*keyEventRecord)(unsafe.Pointer(&e.Info[0]))
 				k := &keyEvent{
 					Rune:  rune(p.unicodeChar),
 					Scan:  p.wVirtualKeyCode,
@@ -181,7 +152,7 @@ func readEvents(flag uint32) []Event {
 			case MENU_EVENT:
 				r = Event{Menu: &struct{}{}}
 			case MOUSE_EVENT:
-				p := (*mouseEvent)(unsafe.Pointer(&e.info[0]))
+				p := (*mouseEvent)(unsafe.Pointer(&e.Info[0]))
 				r = Event{
 					Mouse: &mouseEvent{
 						X:          p.X,
@@ -192,7 +163,7 @@ func readEvents(flag uint32) []Event {
 					},
 				}
 			case WINDOW_BUFFER_SIZE_EVENT:
-				p := (*windowBufferSizeRecord)(unsafe.Pointer(&e.info[0]))
+				p := (*windowBufferSizeRecord)(unsafe.Pointer(&e.Info[0]))
 				r = Event{
 					Resize: &resizeEvent{
 						Width:  uint(p.X),
@@ -259,34 +230,21 @@ func Rune() rune {
 }
 
 func Count() (int, error) {
-	var count uint32 = 0
-
-	status, _, err := getNumberOfConsoleInputEvents.Call(uintptr(hConin),
-		uintptr(unsafe.Pointer(&count)))
-	if status != 0 {
-		return int(count), nil
-	} else {
-		return 0, err
-	}
+	return hConin.GetNumberOfEvent()
 }
 
 func Flush() error {
-	org := GetConsoleMode()
-	SetConsoleMode(ALL_EVENTS)
-	defer SetConsoleMode(org)
+	org := hConin.GetConsoleMode()
+	hConin.SetConsoleMode(ALL_EVENTS)
+	defer hConin.SetConsoleMode(org)
 
 	eventBuffer = nil
-	status, _, err := flushConsoleInputBuffer.Call(uintptr(hConin))
-	if status != 0 {
-		return nil
-	} else {
-		return err
-	}
+	return hConin.FlushConsoleInputBuffer()
 }
 
 // wait for keyboard event
 func Wait(timeout_msec uintptr) (bool, error) {
-	status, _, err := waitForSingleObject.Call(uintptr(hConin), timeout_msec)
+	status, err := hConin.WaitForSingleObject(timeout_msec)
 	switch status {
 	case WAIT_OBJECT_0:
 		return true, nil
@@ -304,9 +262,9 @@ func Wait(timeout_msec uintptr) (bool, error) {
 }
 
 func Within(msec uintptr) (Event, error) {
-	orgConMode := GetConsoleMode()
-	SetConsoleMode(ALL_EVENTS)
-	defer SetConsoleMode(orgConMode)
+	orgConMode := hConin.GetConsoleMode()
+	hConin.SetConsoleMode(ALL_EVENTS)
+	defer hConin.SetConsoleMode(orgConMode)
 
 	if ok, err := Wait(msec); err != nil || !ok {
 		return Event{}, err
@@ -317,9 +275,9 @@ func Within(msec uintptr) (Event, error) {
 const NUL = '\000'
 
 func RuneWithin(msec uintptr) (rune, error) {
-	orgConMode := GetConsoleMode()
-	SetConsoleMode(IGNORE_RESIZE_EVENT)
-	defer SetConsoleMode(orgConMode)
+	orgConMode := hConin.GetConsoleMode()
+	hConin.SetConsoleMode(IGNORE_RESIZE_EVENT)
+	defer hConin.SetConsoleMode(orgConMode)
 
 	if ok, err := Wait(msec); err != nil || !ok {
 		return NUL, err
