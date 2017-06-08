@@ -97,6 +97,10 @@ func New() (*Handle, error) {
 	return &Handle{Handle: handle}, nil
 }
 
+func (h *Handle) Close() {
+	h.Handle.Close()
+}
+
 func (h *Handle) readEvents(flag uint32) []Event {
 	orgConMode := h.GetConsoleMode()
 	h.SetConsoleMode(flag)

@@ -17,7 +17,7 @@ func New() (Handle, error) {
 	return Handle(handle), nil
 }
 
-func (handle Handle)Close() error {
+func (handle Handle) Close() error {
 	return syscall.Close(syscall.Handle(handle))
 }
 
