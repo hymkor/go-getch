@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf16"
-	"unsafe"
 
 	"github.com/zetamatta/go-getch/consoleinput"
 )
@@ -19,19 +18,6 @@ const (
 	ALT_PRESSED        = RIGHT_ALT_PRESSED | LEFT_ALT_PRESSED
 )
 
-type keyEventRecord struct {
-	bKeyDown          int32
-	wRepeartCount     uint16
-	wVirtualKeyCode   uint16
-	wVirtualScanCode  uint16
-	unicodeChar       uint16
-	dwControlKeyState uint32
-}
-
-type windowBufferSizeRecord struct {
-	X int16
-	Y int16
-}
 
 var hConin consoleinput.Handle
 
@@ -62,14 +48,6 @@ func (r resizeEvent) String() string {
 	return fmt.Sprintf("Width:%d,Height:%d", r.Width, r.Height)
 }
 
-type mouseEvent struct {
-	X          int16
-	Y          int16
-	Button     uint32
-	ControlKey uint32
-	Event      uint32
-}
-
 const ( // Button
 	FROM_LEFT_1ST_BUTTON_PRESSED = 0x0001
 	FROM_LEFT_2ND_BUTTON_PRESSED = 0x0004
@@ -78,18 +56,13 @@ const ( // Button
 	RIGHTMOST_BUTTON_PRESSED     = 0x0002
 )
 
-func (m mouseEvent) String() string {
-	return fmt.Sprintf("X:%,Y:%d,Button:%d,ControlKey:%d,Event:%d",
-		m.X, m.Y, m.Button, m.ControlKey, m.Event)
-}
-
 type Event struct {
 	Focus   *struct{} // MS says it should be ignored
 	Key     *keyEvent // == KeyDown
 	KeyDown *keyEvent
 	KeyUp   *keyEvent
-	Menu    *struct{}   // MS says it should be ignored
-	Mouse   *mouseEvent // not supported,yet
+	Menu    *struct{}                      // MS says it should be ignored
+	Mouse   *consoleinput.MouseEventRecord // not supported,yet
 	Resize  *resizeEvent
 }
 
@@ -138,13 +111,13 @@ func readEvents(flag uint32) []Event {
 			case FOCUS_EVENT:
 				r = Event{Focus: &struct{}{}}
 			case KEY_EVENT:
-				p := (*keyEventRecord)(unsafe.Pointer(&e.Info[0]))
+				p := e.KeyEvent()
 				k := &keyEvent{
-					Rune:  rune(p.unicodeChar),
-					Scan:  p.wVirtualKeyCode,
-					Shift: p.dwControlKeyState,
+					Rune:  rune(p.UnicodeChar),
+					Scan:  p.VirtualKeyCode,
+					Shift: p.ControlKeyState,
 				}
-				if p.bKeyDown != 0 {
+				if p.KeyDown != 0 {
 					r = Event{Key: k, KeyDown: k}
 				} else {
 					r = Event{KeyUp: k}
@@ -152,9 +125,9 @@ func readEvents(flag uint32) []Event {
 			case MENU_EVENT:
 				r = Event{Menu: &struct{}{}}
 			case MOUSE_EVENT:
-				p := (*mouseEvent)(unsafe.Pointer(&e.Info[0]))
+				p := e.MouseEvent()
 				r = Event{
-					Mouse: &mouseEvent{
+					Mouse: &consoleinput.MouseEventRecord{
 						X:          p.X,
 						Y:          p.Y,
 						Button:     p.Button,
@@ -163,11 +136,11 @@ func readEvents(flag uint32) []Event {
 					},
 				}
 			case WINDOW_BUFFER_SIZE_EVENT:
-				p := (*windowBufferSizeRecord)(unsafe.Pointer(&e.Info[0]))
+				width,height := e.ResizeEvent()
 				r = Event{
 					Resize: &resizeEvent{
-						Width:  uint(p.X),
-						Height: uint(p.Y),
+						Width:  uint(width),
+						Height: uint(height),
 					},
 				}
 			default:

@@ -42,24 +42,6 @@ func (handle Handle) FlushConsoleInputBuffer() error {
 	}
 }
 
-var readConsoleInput = kernel32.NewProc("ReadConsoleInputW")
-
-type InputRecord struct {
-	EventType uint16
-	_         uint16
-	Info      [8]uint16
-}
-
-func (handle Handle) Read(events []InputRecord) uint32 {
-	var n uint32
-	readConsoleInput.Call(
-		uintptr(handle),
-		uintptr(unsafe.Pointer(&events[0])),
-		uintptr(len(events)),
-		uintptr(unsafe.Pointer(&n)))
-	return n
-}
-
 var getNumberOfConsoleInputEvents = kernel32.NewProc("GetNumberOfConsoleInputEvents")
 
 func (handle Handle) GetNumberOfEvent() (int, error) {
