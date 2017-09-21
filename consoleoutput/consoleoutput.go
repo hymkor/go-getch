@@ -69,6 +69,22 @@ type console_screen_buffer_info_t struct {
 	MaximumWindowSize Coord
 }
 
+func (this *console_screen_buffer_info_t) Width() int {
+	return int(this.Size.X)
+}
+
+func (this *console_screen_buffer_info_t) Height() int {
+	return int(this.Size.Y)
+}
+
+func (this *console_screen_buffer_info_t) CursorX() int {
+	return int(this.CursorPosition.X)
+}
+
+func (this *console_screen_buffer_info_t) CursorY() int {
+	return int(this.CursorPosition.Y)
+}
+
 var getConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
 
 func (handle Handle) GetScreenBufferInfo() (*console_screen_buffer_info_t, error) {
@@ -88,31 +104,31 @@ func (handle Handle) GetRecentOutput() (string, error) {
 		return "", err
 	}
 
-	y := int16(0)
-	h := int16(1)
-	if screen.CursorPosition.Y >= 1 {
-		y = screen.CursorPosition.Y - 1
+	y := 0
+	h := 1
+	if screen.CursorY() >= 1 {
+		y = screen.CursorY() - 1
 		h++
 	}
 
 	region := &SmallRect{
 		Left:   0,
-		Top:    y,
+		Top:    int16(y),
 		Right:  screen.Size.X - 1,
-		Bottom: y + h - 1,
+		Bottom: int16(y + h - 1),
 	}
 
 	home := &Coord{X: 0, Y: 0}
-	charinfo := make([]CharInfoT, screen.Size.X*screen.Size.Y)
+	charinfo := make([]CharInfoT, screen.Width()*screen.Height())
 	err = handle.ReadConsoleOutput(charinfo, screen.Size, *home, region)
 	if err != nil {
 		return "", err
 	}
 
 	var buffer bytes.Buffer
-	for i := int16(0); i < screen.Size.Y; i++ {
-		for j := int16(0); j < screen.Size.X; j++ {
-			p := &charinfo[i*screen.Size.X+j]
+	for i := 0; i < screen.Height(); i++ {
+		for j := 0; j < screen.Width(); j++ {
+			p := &charinfo[i*screen.Width()+j]
 			if (p.Attributes & COMMON_LVB_TRAILING_BYTE) != 0 {
 				// right side of wide charactor
 
