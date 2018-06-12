@@ -49,7 +49,7 @@ func (e *InputRecord) MouseEvent() *MouseEventRecord {
 }
 
 func (m MouseEventRecord) String() string {
-	return fmt.Sprintf("X:%,Y:%d,Button:%d,ControlKey:%d,Event:%d",
+	return fmt.Sprintf("X:%d,Y:%d,Button:%d,ControlKey:%d,Event:%d",
 		m.X, m.Y, m.Button, m.ControlKey, m.Event)
 }
 
