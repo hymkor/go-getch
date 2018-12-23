@@ -186,7 +186,7 @@ func (h *Handle) getEvent(flag uint32) Event {
 	}
 }
 
-const ALL_EVENTS = consoleinput.ENABLE_WINDOW_INPUT | consoleinput.ENABLE_MOUSE_INPUT
+const ALL_EVENTS = consoleinput.ENABLE_WINDOW_INPUT // | consoleinput.ENABLE_MOUSE_INPUT
 
 // Get all console-event (keyboard,resize,...)
 func (h *Handle) All() Event {
